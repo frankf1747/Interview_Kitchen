@@ -1,0 +1,183 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&display=swap');
+@import "tailwindcss";
+
+/* ReactFlow styles — imported AFTER tailwind so unlayered rules beat Tailwind's @layer base reset */
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  /* Olive Green (kitchen cabinets) - Primary */
+  --color-brand-50: #f6f8ee;
+  --color-brand-100: #e8efd4;
+  --color-brand-200: #d2e0ac;
+  --color-brand-300: #b4cc78;
+  --color-brand-400: #97b44c;
+  --color-brand-500: #7a9634;
+  --color-brand-600: #5f7728;
+  --color-brand-700: #4a5c21;
+  --color-brand-800: #3d4a1f;
+  --color-brand-900: #353f1e;
+
+  /* Warm Orange/Terracotta (pot, accents) */
+  --color-accent-50: #fff7f0;
+  --color-accent-100: #ffead6;
+  --color-accent-200: #ffd1a8;
+  --color-accent-300: #ffb070;
+  --color-accent-400: #ff8c3a;
+  --color-accent-500: #f07318;
+  --color-accent-600: #d45a0e;
+  --color-accent-700: #af440e;
+  --color-accent-800: #8c3712;
+  --color-accent-900: #6b2d12;
+
+  /* Warm Cream/Tan (walls, backgrounds) */
+  --color-cream-50: #fffcf8;
+  --color-cream-100: #fef6ed;
+  --color-cream-200: #fcebd8;
+  --color-cream-300: #f8d9b8;
+  --color-cream-400: #f0c08c;
+  --color-cream-500: #e4a468;
+  --color-cream-600: #c88548;
+  --color-cream-700: #a46a38;
+  --color-cream-800: #825330;
+  --color-cream-900: #6a4329;
+
+  /* Warm Brown (wood, text) */
+  --color-wood-50: #faf7f4;
+  --color-wood-100: #f2ece4;
+  --color-wood-200: #e3d5c7;
+  --color-wood-300: #cfb9a3;
+  --color-wood-400: #b6977a;
+  --color-wood-500: #a07b5e;
+  --color-wood-600: #876450;
+  --color-wood-700: #6e5042;
+  --color-wood-800: #5b4239;
+  --color-wood-900: #4c3730;
+
+  /* Fridge Cream (cards) */
+  --color-card: #fffdf9;
+  --color-card-border: #f0dfc8;
+
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+}
+
+/* Base styles */
+body {
+  font-family: 'Outfit', sans-serif;
+  background: linear-gradient(168deg, var(--color-cream-100) 0%, var(--color-cream-200) 50%, #fce8d0 100%);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar - warm themed */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-cream-400); border-radius: 100px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-cream-600); }
+
+/* Subtle background dots for kitchen texture */
+.kitchen-bg {
+  background-image: radial-gradient(circle at 1px 1px, var(--color-cream-300) 0.5px, transparent 0);
+  background-size: 28px 28px;
+}
+
+/* Modern warm card */
+.kitchen-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-card-border);
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px rgba(108, 70, 36, 0.04),
+    0 4px 12px rgba(108, 70, 36, 0.06),
+    0 12px 32px rgba(108, 70, 36, 0.04);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.kitchen-card:hover {
+  box-shadow:
+    0 2px 4px rgba(108, 70, 36, 0.06),
+    0 8px 20px rgba(108, 70, 36, 0.08),
+    0 16px 40px rgba(108, 70, 36, 0.05);
+}
+
+/* Active sidebar button */
+.kitchen-btn-active {
+  box-shadow:
+    0 2px 8px rgba(95, 119, 40, 0.3),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+/* Smooth button interaction */
+.kitchen-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.kitchen-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+.kitchen-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Accent top bar for cards - thin gradient line */
+.recipe-stripe {
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-accent-400), var(--color-accent-300), var(--color-brand-400));
+  border-radius: 3px 3px 0 0;
+}
+
+/* Display font for logo/titles */
+.font-display {
+  font-family: 'Fraunces', Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+/* Warm glassmorphism for navbar */
+.glass-navbar {
+  background: rgba(76, 55, 48, 0.92);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+/* Subtle warm glow on input focus */
+input:focus, textarea:focus, select:focus {
+  box-shadow: 0 0 0 3px rgba(122, 150, 52, 0.15), 0 0 0 1px rgba(122, 150, 52, 0.3) !important;
+}
+
+/* Smooth transitions on all interactive elements */
+button, a, input, textarea, select {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Badge animation */
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+/* ── ReactFlow overrides ────────────────────────────────────────────── */
+
+/* Guarantee the wrapper fills its parent so ReactFlow can measure */
+.react-flow {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Prevent Tailwind's border-reset from collapsing ReactFlow's internal panes */
+.react-flow__renderer,
+.react-flow__zoompane,
+.react-flow__viewport,
+.react-flow__container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Controls and minimap should sit above the canvas */
+.react-flow__controls {
+  z-index: 5;
+}
+.react-flow__minimap {
+  z-index: 5;
+}
