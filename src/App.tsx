@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { createInitialAppState, normalizeAppState } from './types';
+import { createEmptyJobWorkspace, createInitialAppState, normalizeAppState } from './types';
 import { getStatus } from './services/api';
 import { ApiKeySetup } from './components/ApiKeySetup';
 import { SetupScreen } from './components/SetupScreen';
@@ -20,8 +20,18 @@ const App: React.FC = () => {
       .catch(() => setIsApiConfigured(false));
   }, []);
 
-  const handleSetupComplete = (resume: string, jd: string) => {
-    setState((prev) => ({ ...prev, resumeText: resume, jdText: jd, isSetupComplete: true }));
+  const handleSetupComplete = (resume: string, jobs: { title: string; jdText: string }[]) => {
+    const jobDescriptions = jobs.map((job, index) =>
+      createEmptyJobWorkspace(job.title.trim() || `Role ${index + 1}`, job.jdText)
+    );
+
+    setState((prev) => ({
+      ...prev,
+      resumeText: resume,
+      jobDescriptions,
+      activeJobId: jobDescriptions[0]?.id || '',
+      isSetupComplete: jobDescriptions.length > 0,
+    }));
   };
 
   // Loading state while checking API status

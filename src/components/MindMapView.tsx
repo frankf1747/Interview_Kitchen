@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoaderIcon, PuzzleIcon, SparklesIcon, TrashIcon } from './Icons';
 import { MindMapData, MindMapEdge, MindMapNode } from '../types';
 
@@ -15,6 +15,7 @@ const NODE_HEIGHT = 102;
 const COLUMN_PADDING = 56;
 const COLUMN_GAP = 360;
 const ROW_GAP = 142;
+const EXPERIENCE_COLUMN_X = COLUMN_PADDING + NODE_WIDTH + COLUMN_GAP;
 
 type DragState = {
   nodeId: string;
@@ -28,6 +29,31 @@ type ReconnectState = {
   pointerX: number;
   pointerY: number;
 };
+
+type ViewportState = {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+type PanState = {
+  startX: number;
+  startY: number;
+  originOffsetX: number;
+  originOffsetY: number;
+};
+
+const MIN_ZOOM = 0.55;
+const MAX_ZOOM = 1.8;
+const DEFAULT_VIEWPORT: ViewportState = {
+  scale: 0.9,
+  offsetX: 72,
+  offsetY: 40,
+};
+
+function clampZoom(value: number) {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+}
 
 function nodeTone(type: MindMapNode['type']) {
   return type === 'skill'
@@ -73,6 +99,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [reconnectState, setReconnectState] = useState<ReconnectState | null>(null);
+  const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT);
+  const [panState, setPanState] = useState<PanState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const nodeMap = useMemo(() => new Map(mindMap.nodes.map((node) => [node.id, node])), [mindMap.nodes]);
@@ -85,9 +113,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
   const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) || null : null;
   const selectedEdge = selectedEdgeId ? mindMap.edges.find((edge) => edge.id === selectedEdgeId) || null : null;
 
-  const organizedNodes = useMemo(() => {
-    if (mindMap.edited) return mindMap.nodes;
-
+  const autoLayoutNodes = useMemo(() => {
     const skillOrder = [...skillNodes];
     const skillIndex = new Map(skillOrder.map((node, index) => [node.id, index]));
     const orderedExperiences = [...experienceNodes].sort((a, b) => {
@@ -96,8 +122,6 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       return average(aSources) - average(bSources);
     });
 
-    const experienceX = COLUMN_PADDING + NODE_WIDTH + COLUMN_GAP;
-
     return [
       ...skillOrder.map((node, index) => ({
         ...node,
@@ -105,12 +129,48 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       })),
       ...orderedExperiences.map((node, index) => ({
         ...node,
-        position: { x: experienceX, y: 48 + index * ROW_GAP },
+        position: { x: EXPERIENCE_COLUMN_X, y: 48 + index * ROW_GAP },
       })),
     ];
   }, [experienceNodes, mindMap.edited, mindMap.edges, mindMap.nodes, skillNodes]);
 
+  const organizedNodes = useMemo(
+    () => (mindMap.edited ? mindMap.nodes : autoLayoutNodes),
+    [autoLayoutNodes, mindMap.edited, mindMap.nodes]
+  );
+
   const displayNodeMap = useMemo(() => new Map(organizedNodes.map((node) => [node.id, node])), [organizedNodes]);
+  const sceneSignature = useMemo(
+    () =>
+      `${mindMap.edited ? 'edited' : 'auto'}::${organizedNodes
+        .map((node) => `${node.id}:${node.position.x}:${node.position.y}`)
+        .join('|')}::${mindMap.edges.map((edge) => `${edge.id}:${edge.source}:${edge.target}`).join('|')}`,
+    [mindMap.edges, mindMap.edited, organizedNodes]
+  );
+  const sceneWidth = useMemo(() => {
+    if (organizedNodes.length === 0) return 980;
+    const maxX = Math.max(...organizedNodes.map((node) => node.position.x + NODE_WIDTH));
+    return Math.max(980, maxX + 180);
+  }, [organizedNodes]);
+  const sceneHeight = useMemo(() => {
+    if (organizedNodes.length === 0) return canvasHeight;
+    const maxY = Math.max(...organizedNodes.map((node) => node.position.y + NODE_HEIGHT));
+    return Math.max(canvasHeight, maxY + 180);
+  }, [canvasHeight, organizedNodes]);
+
+  const fitToView = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const canvasWidth = canvas.clientWidth;
+    const canvasInnerHeight = canvas.clientHeight;
+    const nextScale = clampZoom(Math.min(canvasWidth / sceneWidth, canvasInnerHeight / sceneHeight, 1));
+    setViewport({
+      scale: nextScale,
+      offsetX: Math.max(24, (canvasWidth - sceneWidth * nextScale) / 2),
+      offsetY: Math.max(24, (canvasInnerHeight - sceneHeight * nextScale) / 2),
+    });
+  }, [sceneHeight, sceneWidth]);
 
   const connectedNodeIds = useMemo(() => {
     if (!selectedNodeId && !selectedEdgeId) return new Set<string>();
@@ -167,6 +227,16 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
   }, [mindMap.edges, selectedEdgeId]);
 
   useEffect(() => {
+    if (mindMap.nodes.length === 0 || mindMap.edited) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      fitToView();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitToView, mindMap.edited, mindMap.nodes.length, sceneSignature]);
+
+  useEffect(() => {
     if (!dragState) return;
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -174,8 +244,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       if (!canvas) return;
 
       const bounds = canvas.getBoundingClientRect();
-      const nextX = event.clientX - bounds.left - dragState.offsetX;
-      const nextY = event.clientY - bounds.top - dragState.offsetY;
+      const nextX = (event.clientX - bounds.left - viewport.offsetX) / viewport.scale - dragState.offsetX;
+      const nextY = (event.clientY - bounds.top - viewport.offsetY) / viewport.scale - dragState.offsetY;
 
       onChange({
         ...mindMap,
@@ -184,8 +254,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
             ? {
                 ...node,
                 position: {
-                  x: Math.max(12, Math.min(bounds.width - NODE_WIDTH - 12, nextX)),
-                  y: Math.max(12, Math.min(canvasHeight - NODE_HEIGHT - 12, nextY)),
+                  x: Math.max(12, Math.min(sceneWidth - NODE_WIDTH - 12, nextX)),
+                  y: Math.max(12, Math.min(sceneHeight - NODE_HEIGHT - 12, nextY)),
                 },
               }
             : node
@@ -203,7 +273,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [canvasHeight, dragState, mindMap, onChange]);
+  }, [dragState, mindMap, onChange, sceneHeight, sceneWidth, viewport.offsetX, viewport.offsetY, viewport.scale]);
 
   useEffect(() => {
     if (!reconnectState) return;
@@ -216,8 +286,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
         current
           ? {
               ...current,
-              pointerX: event.clientX - bounds.left,
-              pointerY: event.clientY - bounds.top,
+              pointerX: (event.clientX - bounds.left - viewport.offsetX) / viewport.scale,
+              pointerY: (event.clientY - bounds.top - viewport.offsetY) / viewport.scale,
             }
           : current
       );
@@ -231,8 +301,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       }
 
       const bounds = canvas.getBoundingClientRect();
-      const dropX = event.clientX - bounds.left;
-      const dropY = event.clientY - bounds.top;
+      const dropX = (event.clientX - bounds.left - viewport.offsetX) / viewport.scale;
+      const dropY = (event.clientY - bounds.top - viewport.offsetY) / viewport.scale;
       const activeEdge = mindMap.edges.find((edge) => edge.id === reconnectState.edgeId);
       if (!activeEdge) {
         setReconnectState(null);
@@ -285,7 +355,29 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [mindMap, onChange, organizedNodes, reconnectState]);
+  }, [mindMap, onChange, organizedNodes, reconnectState, viewport.offsetX, viewport.offsetY, viewport.scale]);
+
+  useEffect(() => {
+    if (!panState) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      setViewport((current) => ({
+        ...current,
+        offsetX: panState.originOffsetX + (event.clientX - panState.startX),
+        offsetY: panState.originOffsetY + (event.clientY - panState.startY),
+      }));
+    };
+
+    const handlePointerUp = () => setPanState(null);
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp, { once: true });
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [panState]);
 
   const updateNode = (field: 'label' | 'note', value: string) => {
     if (!selectedNode) return;
@@ -315,6 +407,70 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
     setSelectedEdgeId(null);
   };
 
+  const handleCanvasWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const handleNativeCanvasWheel = useCallback((event: WheelEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const bounds = canvas.getBoundingClientRect();
+    const pointerX = event.clientX - bounds.left;
+    const pointerY = event.clientY - bounds.top;
+
+    setViewport((current) => {
+      const zoomFactor = Math.exp(-event.deltaY * 0.00045);
+      const nextScale = clampZoom(current.scale * zoomFactor);
+      const sceneX = (pointerX - current.offsetX) / current.scale;
+      const sceneY = (pointerY - current.offsetY) / current.scale;
+
+      return {
+        scale: nextScale,
+        offsetX: pointerX - sceneX * nextScale,
+        offsetY: pointerY - sceneY * nextScale,
+      };
+    });
+  }, []);
+
+  const zoomBy = (multiplier: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const centerX = canvas.clientWidth / 2;
+    const centerY = canvas.clientHeight / 2;
+
+    setViewport((current) => {
+      const nextScale = clampZoom(current.scale * multiplier);
+      const sceneX = (centerX - current.offsetX) / current.scale;
+      const sceneY = (centerY - current.offsetY) / current.scale;
+      return {
+        scale: nextScale,
+        offsetX: centerX - sceneX * nextScale,
+        offsetY: centerY - sceneY * nextScale,
+      };
+    });
+  };
+
+  const handleFit = () => {
+    if (!mindMap.edited) {
+      fitToView();
+      return;
+    }
+
+    onChange({
+      ...mindMap,
+      nodes: autoLayoutNodes,
+      edited: false,
+    });
+
+    window.requestAnimationFrame(() => {
+      fitToView();
+    });
+  };
+
   const renderedEdges = mindMap.edges
     .map((edge) => {
       const source = displayNodeMap.get(edge.source);
@@ -323,6 +479,16 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
       return { edge, source, target };
     })
     .filter(Boolean) as { edge: MindMapEdge; source: MindMapNode; target: MindMapNode }[];
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', handleNativeCanvasWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', handleNativeCanvasWheel);
+    };
+  }, [handleNativeCanvasWheel]);
 
   return (
     <div className="kitchen-card overflow-hidden mb-6">
@@ -391,7 +557,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
                 <h3 className="text-sm font-semibold text-wood-800">How it works now</h3>
                 <p className="mt-2 text-sm leading-relaxed text-wood-500">
                   Drag nodes to reorganize your story, click a node or connection to highlight it, and drag the small endpoint handles
-                  on a selected connection to reconnect that line.
+                  on a selected connection to reconnect that line. Use your mouse wheel to zoom and drag empty canvas space to move around.
                 </p>
               </section>
 
@@ -460,20 +626,87 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
             </div>
           </div>
 
-          <div
-            ref={canvasRef}
-            className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(248,217,184,0.18),_transparent_40%),linear-gradient(180deg,_rgba(255,252,248,0.92),_rgba(255,247,240,0.96))]"
-            style={{ width: '100%', height: canvasHeight }}
-            onClick={() => {
-              setSelectedNodeId(null);
-              setSelectedEdgeId(null);
-            }}
-          >
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-14 pt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-wood-300">
-              <span>JD Skills</span>
-              <span>Relevant Experience</span>
+          <div className="relative border-t border-cream-200/70">
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+              <div className="rounded-xl border border-cream-200 bg-card/90 px-3 py-1.5 text-xs font-semibold text-wood-500 shadow-sm">
+                {Math.round(viewport.scale * 100)}%
+              </div>
+              <button
+                onClick={() => zoomBy(1.12)}
+                className="rounded-xl border border-cream-200 bg-card/90 px-3 py-2 text-sm font-semibold text-wood-700 shadow-sm hover:bg-cream-50"
+                title="Zoom in"
+              >
+                +
+              </button>
+              <button
+                onClick={() => zoomBy(0.9)}
+                className="rounded-xl border border-cream-200 bg-card/90 px-3 py-2 text-sm font-semibold text-wood-700 shadow-sm hover:bg-cream-50"
+                title="Zoom out"
+              >
+                -
+              </button>
+              <button
+                onClick={handleFit}
+                className="rounded-xl border border-cream-200 bg-card/90 px-3 py-2 text-xs font-semibold text-wood-700 shadow-sm hover:bg-cream-50"
+                title="Fit board"
+              >
+                Fit
+              </button>
             </div>
-            <svg className="absolute inset-0 h-full w-full">
+
+            <div
+              ref={canvasRef}
+              className={`relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(248,217,184,0.18),_transparent_40%),linear-gradient(180deg,_rgba(255,252,248,0.92),_rgba(255,247,240,0.96))] ${
+                panState ? 'cursor-grabbing' : 'cursor-grab'
+              }`}
+              style={{ width: '100%', height: canvasHeight, overscrollBehavior: 'contain', touchAction: 'none' }}
+              onWheel={handleCanvasWheel}
+              onClick={() => {
+                setSelectedNodeId(null);
+                setSelectedEdgeId(null);
+              }}
+              onPointerDown={(event) => {
+                const target = event.target as HTMLElement;
+                if (target.closest('[data-node-card="true"], [data-edge-hit="true"], [data-edge-handle="true"], button, input, textarea, select')) {
+                  return;
+                }
+                setPanState({
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  originOffsetX: viewport.offsetX,
+                  originOffsetY: viewport.offsetY,
+                });
+              }}
+            >
+            <div
+              className="absolute left-0 top-0 origin-top-left"
+              style={{
+                width: sceneWidth,
+                height: sceneHeight,
+                transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.scale})`,
+              }}
+            >
+            <div className="pointer-events-none absolute left-0 top-0 h-12 text-[11px] font-semibold uppercase tracking-[0.2em] text-wood-300">
+              <span
+                className="absolute top-2 -translate-x-1/2 whitespace-nowrap"
+                style={{ left: COLUMN_PADDING + NODE_WIDTH / 2 }}
+              >
+                JD Skills
+              </span>
+              <span
+                className="absolute top-2 -translate-x-1/2 whitespace-nowrap"
+                style={{ left: EXPERIENCE_COLUMN_X + NODE_WIDTH / 2 }}
+              >
+                Relevant Experience
+              </span>
+            </div>
+            <svg
+              className="absolute left-0 top-0"
+              width={sceneWidth}
+              height={sceneHeight}
+              viewBox={`0 0 ${sceneWidth} ${sceneHeight}`}
+              style={{ overflow: 'visible', zIndex: 1 }}
+            >
               {renderedEdges.map(({ edge, source, target }) => {
                 const path = edgePath(source, target);
                 const labelPos = edgeLabelPosition(source, target);
@@ -497,6 +730,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
                       stroke="transparent"
                       strokeWidth={18}
                       className="cursor-pointer"
+                      data-edge-hit="true"
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelectedEdgeId(edge.id);
@@ -542,6 +776,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
                           stroke="#fffdf9"
                           strokeWidth={3}
                           className="cursor-grab"
+                          data-edge-handle="true"
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             setReconnectState({
@@ -560,6 +795,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
                           stroke="#fffdf9"
                           strokeWidth={3}
                           className="cursor-grab"
+                          data-edge-handle="true"
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             setReconnectState({
@@ -616,6 +852,7 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
               return (
                 <div
                   key={node.id}
+                  data-node-card="true"
                   className={`absolute select-none rounded-2xl border px-4 py-3 shadow-sm transition-all duration-200 ${
                     tone.shell
                   } ${highlighted ? 'opacity-100 shadow-lg' : 'opacity-45'} ${selected ? 'ring-2 ring-wood-300' : ''}`}
@@ -649,6 +886,8 @@ export const MindMapView: React.FC<MindMapViewProps> = ({
                 </div>
               );
             })}
+          </div>
+          </div>
           </div>
         </div>
       )}

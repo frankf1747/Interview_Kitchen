@@ -120,7 +120,7 @@ Answer: {{answer}}`,
     name: 'Generate JD Skill Map',
     description: 'Creates a compact skill-to-experience graph connecting JD topics to the candidate’s extracted experiences.',
     template: `You are an expert interview coach helping a candidate understand how their resume aligns to a job description.
-Extract the most interview-relevant skills and topics from the Job Description, then connect them to the candidate's most relevant experiences.
+Extract the skill/topic nodes primarily from the Job Description's "Key Responsibilities" or equivalent responsibilities section, then connect each one to the single best proving experience from the candidate's background.
 
 Return JSON only with this shape:
 {
@@ -136,11 +136,23 @@ Return JSON only with this shape:
 Rules:
 - Only include node types "skill" and "experience".
 - Focus on skill -> experience connections only.
-- Include 4 to 8 skill/topic nodes.
+- Include 4 to 6 skill/topic nodes.
+- Derive skill/topic nodes from the responsibility bullets first, not from generic qualifications or broad boilerplate.
+- If role and company context is provided, use it to prioritize and sharpen the responsibility-derived nodes so they reflect what matters most in this specific job.
+- Keep each skill node very close to the language of a key responsibility, but concise enough to scan quickly in an interview prep map.
 - Reuse only the provided experiences; do not invent new experience nodes.
-- Every edge must connect a skill node to an experience node.
+- Every skill node must connect to exactly one best-fit experience node.
+- Include all provided experiences as experience nodes, even if some are weaker evidence.
+- Keep the graph sparse: no node should have more than 2 total connections.
+- Prefer themes that a hiring manager would naturally ask about from the responsibilities section. Good examples: process optimization, analytics, automation, experimentation, product judgment, stakeholder communication.
+- Avoid generic or weak themes unless they are clearly central to the role.
 - Keep labels concise and human-readable.
-- Keep notes and edge labels short and useful for interview prep.
+- Skill notes should explain why the theme matters for the target role.
+- Experience notes should summarize the strongest evidence from that experience.
+- Edge labels should be short proof phrases that would help the candidate tell the interview story.
+
+Key Responsibilities excerpt:
+{{responsibilities}}
 
 Resume:
 {{resume}}

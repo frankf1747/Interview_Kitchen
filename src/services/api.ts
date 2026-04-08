@@ -84,11 +84,13 @@ export async function extractExperiences(resume: string): Promise<{ title: strin
 export async function generateSkillMap(
   resume: string,
   jd: string,
-  experiences: { title: string; description: string }[]
+  experiences: { title: string; description: string }[],
+  personalContext = '',
+  jobContext = ''
 ): Promise<{ nodes: Omit<MindMapNode, 'position'>[]; edges: MindMapEdge[] }> {
   return request('/generate-skill-map', {
     method: 'POST',
-    body: JSON.stringify({ resume, jd, experiences }),
+    body: JSON.stringify({ resume, jd, experiences, personalContext, jobContext }),
   });
 }
 
@@ -96,11 +98,12 @@ export async function generateQuestions(
   resume: string,
   jd: string,
   section: string,
-  additionalContext = ''
+  personalContext = '',
+  jobContext = ''
 ): Promise<{ question: string; answer: string }[]> {
   const data = await request<{ questions: { question: string; answer: string }[] }>('/generate-questions', {
     method: 'POST',
-    body: JSON.stringify({ resume, jd, section, additionalContext }),
+    body: JSON.stringify({ resume, jd, section, personalContext, jobContext }),
   });
   return data.questions;
 }
@@ -109,11 +112,12 @@ export async function generateExperienceQuestions(
   jd: string,
   expTitle: string,
   expDesc: string,
-  additionalContext = ''
+  personalContext = '',
+  jobContext = ''
 ): Promise<{ question: string; answer: string }[]> {
   const data = await request<{ questions: { question: string; answer: string }[] }>(
     '/generate-experience-questions',
-    { method: 'POST', body: JSON.stringify({ jd, expTitle, expDesc, additionalContext }) }
+    { method: 'POST', body: JSON.stringify({ jd, expTitle, expDesc, personalContext, jobContext }) }
   );
   return data.questions;
 }
@@ -122,11 +126,12 @@ export async function generateCustomAnswer(
   question: string,
   resume: string,
   jd: string,
-  additionalContext = ''
+  personalContext = '',
+  jobContext = ''
 ): Promise<string> {
   const data = await request<{ answer: string }>('/generate-custom-answer', {
     method: 'POST',
-    body: JSON.stringify({ question, resume, jd, additionalContext }),
+    body: JSON.stringify({ question, resume, jd, personalContext, jobContext }),
   });
   return data.answer;
 }

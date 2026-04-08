@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { SectionType, AppState, QuestionItem } from '../types';
+import { SectionType, QuestionItem } from '../types';
 import { SECTION_DETAILS } from '../constants';
 import * as api from '../services/api';
 import { QuestionCard } from './QuestionCard';
@@ -8,7 +8,11 @@ import { SparklesIcon, LoaderIcon } from './Icons';
 
 interface SectionViewProps {
   sectionType: SectionType;
-  state: AppState;
+  resumeText: string;
+  jdText: string;
+  personalContext: string;
+  jobContext: string;
+  questions: QuestionItem[];
   onUpdateQuestions: (section: SectionType, questions: QuestionItem[]) => void;
   onUpdateOutline: (section: SectionType, questionId: string, outline: string[]) => void;
   onUpdateCloze: (section: SectionType, questionId: string, clozeText: string) => void;
@@ -18,7 +22,11 @@ interface SectionViewProps {
 
 export const SectionView: React.FC<SectionViewProps> = ({
   sectionType,
-  state,
+  resumeText,
+  jdText,
+  personalContext,
+  jobContext,
+  questions,
   onUpdateQuestions,
   onUpdateOutline,
   onUpdateCloze,
@@ -30,7 +38,6 @@ export const SectionView: React.FC<SectionViewProps> = ({
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const details = SECTION_DETAILS[sectionType];
-  const questions = state.questions[sectionType] || [];
 
   const reorderQuestions = useCallback(
     (sourceId: string, targetId: string) => {
@@ -51,10 +58,11 @@ export const SectionView: React.FC<SectionViewProps> = ({
     setIsGenerating(true);
     try {
       const newQuestionsRaw = await api.generateQuestions(
-        state.resumeText,
-        state.jdText,
+        resumeText,
+        jdText,
         sectionType,
-        state.additionalContext
+        personalContext,
+        jobContext
       );
       const newQuestions: QuestionItem[] = newQuestionsRaw.map((q) => ({
         ...q,
@@ -67,7 +75,7 @@ export const SectionView: React.FC<SectionViewProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [sectionType, state.resumeText, state.jdText, questions, onUpdateQuestions]);
+  }, [jdText, jobContext, personalContext, questions, onUpdateQuestions, resumeText, sectionType]);
 
   const handleAddCustom = useCallback(
     (question: string, answer: string) => {
@@ -202,9 +210,10 @@ export const SectionView: React.FC<SectionViewProps> = ({
         <div className="pt-1">
           <CustomQuestionForm
             onAdd={handleAddCustom}
-            resumeText={state.resumeText}
-            jdText={state.jdText}
-            additionalContext={state.additionalContext}
+            resumeText={resumeText}
+            jdText={jdText}
+            personalContext={personalContext}
+            jobContext={jobContext}
           />
         </div>
       </div>

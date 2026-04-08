@@ -6,14 +6,16 @@ interface CustomQuestionFormProps {
   onAdd: (question: string, answer: string) => void;
   resumeText: string;
   jdText: string;
-  additionalContext: string;
+  personalContext: string;
+  jobContext: string;
 }
 
 export const CustomQuestionForm: React.FC<CustomQuestionFormProps> = ({
   onAdd,
   resumeText,
   jdText,
-  additionalContext,
+  personalContext,
+  jobContext,
 }) => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
@@ -35,7 +37,7 @@ export const CustomQuestionForm: React.FC<CustomQuestionFormProps> = ({
     }
     setIsGenerating(true);
     try {
-      const generatedAnswer = await api.generateCustomAnswer(question, resumeText, jdText, additionalContext);
+      const generatedAnswer = await api.generateCustomAnswer(question, resumeText, jdText, personalContext, jobContext);
       setAnswer(generatedAnswer);
     } catch {
       alert('Failed to generate answer.');

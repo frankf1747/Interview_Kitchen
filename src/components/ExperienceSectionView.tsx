@@ -7,9 +7,11 @@ import { SparklesIcon, LoaderIcon, ChevronDownIcon, ChevronUpIcon, BriefcaseIcon
 
 interface ExperienceSectionViewProps {
   experience: Experience;
+  questions: QuestionItem[];
   jdText: string;
   resumeText: string;
-  additionalContext: string;
+  personalContext: string;
+  jobContext: string;
   onUpdateQuestions: (expId: string, questions: QuestionItem[]) => void;
   onUpdateOutline: (expId: string, questionId: string, outline: string[]) => void;
   onUpdateCloze: (expId: string, questionId: string, clozeText: string) => void;
@@ -20,9 +22,11 @@ interface ExperienceSectionViewProps {
 
 export const ExperienceSectionView: React.FC<ExperienceSectionViewProps> = ({
   experience,
+  questions,
   jdText,
   resumeText,
-  additionalContext,
+  personalContext,
+  jobContext,
   onUpdateQuestions,
   onUpdateOutline,
   onUpdateCloze,
@@ -34,8 +38,6 @@ export const ExperienceSectionView: React.FC<ExperienceSectionViewProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [draggedQuestionId, setDraggedQuestionId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-
-  const questions = experience.questions || [];
 
   const reorderQuestions = useCallback(
     (sourceId: string, targetId: string) => {
@@ -62,7 +64,8 @@ export const ExperienceSectionView: React.FC<ExperienceSectionViewProps> = ({
           jdText,
           experience.title,
           experience.description,
-          additionalContext
+          personalContext,
+          jobContext
         );
         const newQuestions: QuestionItem[] = newQuestionsRaw.map((q) => ({
           ...q,
@@ -76,7 +79,7 @@ export const ExperienceSectionView: React.FC<ExperienceSectionViewProps> = ({
         setIsGenerating(false);
       }
     },
-    [experience, jdText, questions, onUpdateQuestions, isExpanded]
+    [experience, isExpanded, jdText, jobContext, onUpdateQuestions, personalContext, questions]
   );
 
   const handleAddCustom = useCallback(
@@ -219,7 +222,8 @@ export const ExperienceSectionView: React.FC<ExperienceSectionViewProps> = ({
               onAdd={handleAddCustom}
               resumeText={resumeText}
               jdText={jdText}
-              additionalContext={additionalContext}
+              personalContext={personalContext}
+              jobContext={jobContext}
             />
           </div>
         </div>

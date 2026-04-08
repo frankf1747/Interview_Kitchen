@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { AppState, QuestionItem } from '../types';
+import { Experience, QuestionItem } from '../types';
 import { ExperienceSectionView } from './ExperienceSectionView';
 import { PlusIcon, LoaderIcon } from './Icons';
 
 interface ResumeRelevancePageProps {
-  state: AppState;
+  experiences: Experience[];
+  experienceQuestions: Record<string, QuestionItem[]>;
+  jdText: string;
+  resumeText: string;
+  personalContext: string;
+  jobContext: string;
   isExtracting: boolean;
   onAddExperience: (title: string, description: string) => void;
   onDeleteExperience: (id: string) => void;
@@ -16,7 +21,12 @@ interface ResumeRelevancePageProps {
 }
 
 export const ResumeRelevancePage: React.FC<ResumeRelevancePageProps> = ({
-  state,
+  experiences,
+  experienceQuestions,
+  jdText,
+  resumeText,
+  personalContext,
+  jobContext,
   isExtracting,
   onAddExperience,
   onDeleteExperience,
@@ -50,7 +60,7 @@ export const ResumeRelevancePage: React.FC<ResumeRelevancePageProps> = ({
       </div>
 
       <div className="space-y-5">
-        {isExtracting && state.experiences.length === 0 && (
+        {isExtracting && experiences.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 kitchen-card">
             <LoaderIcon className="w-7 h-7 text-accent-500 mb-4 animate-gentle-pulse" />
             <h3 className="text-[15px] font-semibold text-wood-700 mb-1">Extracting Experiences...</h3>
@@ -58,7 +68,7 @@ export const ResumeRelevancePage: React.FC<ResumeRelevancePageProps> = ({
           </div>
         )}
 
-        {!isExtracting && state.experiences.length === 0 && !isAdding && (
+        {!isExtracting && experiences.length === 0 && !isAdding && (
           <div className="text-center py-16 kitchen-card">
             <div className="text-3xl mb-3">🧑‍🍳</div>
             <h3 className="text-[15px] font-semibold text-wood-700 mb-2">No experiences found or added</h3>
@@ -74,13 +84,15 @@ export const ResumeRelevancePage: React.FC<ResumeRelevancePageProps> = ({
           </div>
         )}
 
-        {state.experiences.map((exp) => (
+        {experiences.map((exp) => (
           <ExperienceSectionView
             key={exp.id}
             experience={exp}
-            jdText={state.jdText}
-            resumeText={state.resumeText}
-            additionalContext={state.additionalContext}
+            questions={experienceQuestions[exp.id] || []}
+            jdText={jdText}
+            resumeText={resumeText}
+            personalContext={personalContext}
+            jobContext={jobContext}
             onUpdateQuestions={onUpdateQuestions}
             onUpdateOutline={onUpdateOutline}
             onUpdateCloze={onUpdateCloze}
@@ -134,7 +146,7 @@ export const ResumeRelevancePage: React.FC<ResumeRelevancePageProps> = ({
             </div>
           </div>
         ) : (
-          state.experiences.length > 0 &&
+          experiences.length > 0 &&
           !isExtracting && (
             <button
               onClick={() => setIsAdding(true)}

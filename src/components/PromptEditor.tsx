@@ -8,8 +8,11 @@ interface PromptEditorProps {
   onClose: () => void;
   currentModel: string;
   onModelChange: (model: string) => void;
-  additionalContext: string;
-  onAdditionalContextChange: (value: string) => void;
+  personalContext: string;
+  onPersonalContextChange: (value: string) => void;
+  activeJobTitle: string;
+  jobContext: string;
+  onJobContextChange: (value: string) => void;
 }
 
 export const PromptEditor: React.FC<PromptEditorProps> = ({
@@ -17,8 +20,11 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   onClose,
   currentModel,
   onModelChange,
-  additionalContext,
-  onAdditionalContextChange,
+  personalContext,
+  onPersonalContextChange,
+  activeJobTitle,
+  jobContext,
+  onJobContextChange,
 }) => {
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [defaults, setDefaults] = useState<PromptTemplate[]>([]);
@@ -27,7 +33,9 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [modelInput, setModelInput] = useState(currentModel);
-  const [contextInput, setContextInput] = useState(additionalContext);
+  const [personalContextInput, setPersonalContextInput] = useState(personalContext);
+  const [jobContextInput, setJobContextInput] = useState(jobContext);
+  const [activePanel, setActivePanel] = useState<'personal-context' | 'job-context' | 'prompts'>('personal-context');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,8 +54,12 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   }, [currentModel]);
 
   useEffect(() => {
-    setContextInput(additionalContext);
-  }, [additionalContext]);
+    setPersonalContextInput(personalContext);
+  }, [personalContext]);
+
+  useEffect(() => {
+    setJobContextInput(jobContext);
+  }, [jobContext]);
 
   const activePrompt = prompts.find((p) => p.id === activePromptId);
   const defaultForActive = defaults.find((d) => d.id === activePromptId);
@@ -66,8 +78,11 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         await api.updateModel(modelInput);
         onModelChange(modelInput);
       }
-      if (contextInput !== additionalContext) {
-        onAdditionalContextChange(contextInput);
+      if (personalContextInput !== personalContext) {
+        onPersonalContextChange(personalContextInput);
+      }
+      if (jobContextInput !== jobContext) {
+        onJobContextChange(jobContextInput);
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -130,32 +145,41 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 />
               </div>
 
-              <div className="p-4 border-b border-cream-200/80">
-                <label className="block text-[11px] font-semibold text-wood-400 uppercase tracking-wider mb-1.5">
-                  Additional Context
-                </label>
-                <textarea
-                  value={contextInput}
-                  onChange={(e) => { setContextInput(e.target.value); setSaved(false); }}
-                  rows={8}
-                  className="w-full px-3 py-2.5 border border-cream-300 rounded-lg text-sm outline-none bg-cream-50/60 text-wood-800 resize-y"
-                  placeholder="Add fresh context about your latest work, current project scope, recent wins, ownership, tools, stakeholders, or anything else the interview answers should reflect."
-                />
-                <p className="mt-2 text-[11px] leading-relaxed text-wood-400">
-                  This gets added to interview question and answer generation so responses can reflect what you are doing most recently.
-                </p>
-              </div>
-
               <div className="p-2">
+                <div className="text-[11px] font-semibold text-wood-400 uppercase tracking-wider px-2 py-2">Context</div>
+                <button
+                  onClick={() => setActivePanel('personal-context')}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-[13px] transition-all mb-1 ${
+                    activePanel === 'personal-context'
+                      ? 'bg-brand-500 text-white shadow-md shadow-brand-600/25'
+                      : 'text-wood-600 hover:bg-card hover:shadow-sm'
+                  }`}
+                >
+                  <span className="font-medium truncate">Personal Context</span>
+                </button>
+                <button
+                  onClick={() => setActivePanel('job-context')}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-[13px] transition-all mb-2 ${
+                    activePanel === 'job-context'
+                      ? 'bg-brand-500 text-white shadow-md shadow-brand-600/25'
+                      : 'text-wood-600 hover:bg-card hover:shadow-sm'
+                  }`}
+                >
+                  <span className="font-medium truncate">Job Context</span>
+                </button>
+
                 <div className="text-[11px] font-semibold text-wood-400 uppercase tracking-wider px-2 py-2">Prompts</div>
                 {prompts.map((p) => {
-                  const isActive = p.id === activePromptId;
+                  const isActive = activePanel === 'prompts' && p.id === activePromptId;
                   const defaultP = defaults.find((d) => d.id === p.id);
                   const modified = defaultP && p.template !== defaultP.template;
                   return (
                     <button
                       key={p.id}
-                      onClick={() => setActivePromptId(p.id)}
+                      onClick={() => {
+                        setActivePromptId(p.id);
+                        setActivePanel('prompts');
+                      }}
                       className={`w-full text-left px-3 py-2.5 rounded-lg text-[13px] transition-all mb-1 ${
                         isActive
                           ? 'bg-brand-500 text-white shadow-md shadow-brand-600/25'
@@ -176,7 +200,46 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 
             {/* Editor */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {activePrompt ? (
+              {activePanel === 'personal-context' ? (
+                <>
+                  <div className="px-6 py-4 border-b border-cream-200/80 shrink-0">
+                    <h3 className="text-[15px] font-bold text-wood-800">Personal Context</h3>
+                    <p className="text-sm text-wood-400">
+                      Add fresh context about your latest work, priorities, wins, tools, stakeholders, and current scope.
+                    </p>
+                  </div>
+                  <div className="flex-1 overflow-hidden p-5">
+                    <textarea
+                      value={personalContextInput}
+                      onChange={(e) => { setPersonalContextInput(e.target.value); setSaved(false); }}
+                      className="w-full h-full bg-cream-50/60 text-wood-800 p-4 border border-cream-300 rounded-xl text-[13px] leading-relaxed outline-none resize-none"
+                      placeholder="Add current projects, recent wins, scope, ownership, tools, stakeholders, and anything that should make your interview answers sound up to date."
+                    />
+                  </div>
+                </>
+              ) : activePanel === 'job-context' ? (
+                <>
+                  <div className="px-6 py-4 border-b border-cream-200/80 shrink-0">
+                    <h3 className="text-[15px] font-bold text-wood-800">Job & Company Context</h3>
+                    <p className="text-sm text-wood-400">
+                      Tailor the active role with extra context about the company, team, product, hiring priorities, or why the role matters.
+                    </p>
+                    <div className="mt-2">
+                      <span className="text-[11px] bg-cream-200/80 text-wood-500 px-2 py-0.5 rounded-md font-mono">
+                        {activeJobTitle || 'No active role selected'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-hidden p-5">
+                    <textarea
+                      value={jobContextInput}
+                      onChange={(e) => { setJobContextInput(e.target.value); setSaved(false); }}
+                      className="w-full h-full bg-cream-50/60 text-wood-800 p-4 border border-cream-300 rounded-xl text-[13px] leading-relaxed outline-none resize-none"
+                      placeholder="Add company strategy, team goals, role nuance, target product area, interview emphasis, or what this employer likely cares most about."
+                    />
+                  </div>
+                </>
+              ) : activePrompt ? (
                 <>
                   <div className="px-6 py-4 border-b border-cream-200/80 shrink-0">
                     <h3 className="text-[15px] font-bold text-wood-800">{activePrompt.name}</h3>

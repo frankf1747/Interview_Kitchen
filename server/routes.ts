@@ -160,8 +160,14 @@ router.post('/extract-experiences', async (req: Request, res: Response) => {
 
 router.post('/generate-skill-map', async (req: Request, res: Response) => {
   try {
-    const { resume, jd, experiences } = req.body;
-    const skillMap = await openai.generateSkillMap(resume, jd, Array.isArray(experiences) ? experiences : []);
+    const { resume, jd, experiences, personalContext, jobContext } = req.body;
+    const skillMap = await openai.generateSkillMap(
+      resume,
+      jd,
+      Array.isArray(experiences) ? experiences : [],
+      personalContext,
+      jobContext
+    );
     res.json(skillMap);
   } catch (err: any) {
     console.error('Generate skill map error:', err);
@@ -171,8 +177,8 @@ router.post('/generate-skill-map', async (req: Request, res: Response) => {
 
 router.post('/generate-questions', async (req: Request, res: Response) => {
   try {
-    const { resume, jd, section, additionalContext } = req.body;
-    const questions = await openai.generateQuestions(resume, jd, section, additionalContext);
+    const { resume, jd, section, personalContext, jobContext } = req.body;
+    const questions = await openai.generateQuestions(resume, jd, section, personalContext, jobContext);
     res.json({ questions });
   } catch (err: any) {
     console.error('Generate questions error:', err);
@@ -182,8 +188,8 @@ router.post('/generate-questions', async (req: Request, res: Response) => {
 
 router.post('/generate-experience-questions', async (req: Request, res: Response) => {
   try {
-    const { jd, expTitle, expDesc, additionalContext } = req.body;
-    const questions = await openai.generateExperienceQuestions(jd, expTitle, expDesc, additionalContext);
+    const { jd, expTitle, expDesc, personalContext, jobContext } = req.body;
+    const questions = await openai.generateExperienceQuestions(jd, expTitle, expDesc, personalContext, jobContext);
     res.json({ questions });
   } catch (err: any) {
     console.error('Generate experience questions error:', err);
@@ -193,8 +199,8 @@ router.post('/generate-experience-questions', async (req: Request, res: Response
 
 router.post('/generate-custom-answer', async (req: Request, res: Response) => {
   try {
-    const { question, resume, jd, additionalContext } = req.body;
-    const answer = await openai.generateCustomAnswer(question, resume, jd, additionalContext);
+    const { question, resume, jd, personalContext, jobContext } = req.body;
+    const answer = await openai.generateCustomAnswer(question, resume, jd, personalContext, jobContext);
     res.json({ answer });
   } catch (err: any) {
     console.error('Generate custom answer error:', err);

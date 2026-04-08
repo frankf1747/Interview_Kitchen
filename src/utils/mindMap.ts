@@ -2,6 +2,13 @@ import { MindMapData, MindMapEdge, MindMapNode } from '../types';
 
 type IncomingNode = Partial<MindMapNode> & Pick<MindMapNode, 'id' | 'type' | 'label'>;
 type IncomingEdge = Partial<MindMapEdge> & Pick<MindMapEdge, 'source' | 'target'>;
+type RankedEdge = {
+  skillId: string;
+  experienceId: string;
+  experienceIndex: number;
+  score: number;
+  label: string;
+};
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 
@@ -67,6 +74,107 @@ function tokenize(text: string) {
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
 }
 
+function buildEvidenceLabel(skillLabel: string, experience: { title: string; description: string }) {
+  const skillTokens = new Set(tokenize(skillLabel));
+  const experienceTokens = tokenize(`${experience.title} ${experience.description}`);
+  const sharedTokens = Array.from(new Set(experienceTokens.filter((token) => skillTokens.has(token))));
+
+  if (sharedTokens.length >= 2) return titleCase(sharedTokens.slice(0, 2).join(' '));
+  if (sharedTokens.length === 1) return titleCase(sharedTokens[0]);
+
+  const firstMeaningfulLine = experience.description
+    .split('\n')
+    .map((line) => line.trim().replace(/^[\s\-*•0-9.()]+/, ''))
+    .find(Boolean);
+
+  return firstMeaningfulLine ? titleCase(firstMeaningfulLine.split(/\s+/).slice(0, 3).join(' ')) : 'Best Fit';
+}
+
+function scoreSkillExperienceMatch(skillLabel: string, experience: { title: string; description: string }) {
+  const skillTokens = new Set(tokenize(skillLabel));
+  const haystack = `${experience.title} ${experience.description}`.toLowerCase();
+  const experienceTokens = tokenize(haystack);
+  let score = experienceTokens.filter((token) => skillTokens.has(token)).length * 3;
+
+  if (score === 0) {
+    const skillLower = skillLabel.toLowerCase();
+    if (haystack.includes(skillLower)) {
+      score += 4;
+    } else {
+      for (const token of skillTokens) {
+        if (haystack.includes(token)) score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function buildBoundedEdges(
+  skillNodes: MindMapNode[],
+  experienceNodes: MindMapNode[],
+  experiences: { title: string; description: string }[],
+) {
+  const rankAllPairs: RankedEdge[] = skillNodes
+    .flatMap((skillNode) =>
+      experiences.map((experience, experienceIndex) => ({
+        skillId: skillNode.id,
+        experienceId: experienceNodes[experienceIndex]?.id || '',
+        experienceIndex,
+        score: scoreSkillExperienceMatch(skillNode.label, experience),
+        label: buildEvidenceLabel(skillNode.label, experience),
+      }))
+    )
+    .filter((pair) => pair.experienceId);
+
+  const rankedPairs = rankAllPairs.sort((a, b) => b.score - a.score);
+  const degreeBySkill = new Map<string, number>();
+  const degreeByExperience = new Map<string, number>();
+  const selected: MindMapEdge[] = [];
+  const selectedKeys = new Set<string>();
+
+  const trySelect = (pair: RankedEdge) => {
+    if ((degreeBySkill.get(pair.skillId) || 0) >= 2) return false;
+    if ((degreeByExperience.get(pair.experienceId) || 0) >= 2) return false;
+    const key = `${pair.skillId}:${pair.experienceId}`;
+    if (selectedKeys.has(key)) return false;
+
+    selected.push({
+      id: `edge-${pair.skillId}-${pair.experienceId}-${selected.length + 1}`,
+      source: pair.skillId,
+      target: pair.experienceId,
+      label: pair.label,
+    });
+    selectedKeys.add(key);
+    degreeBySkill.set(pair.skillId, (degreeBySkill.get(pair.skillId) || 0) + 1);
+    degreeByExperience.set(pair.experienceId, (degreeByExperience.get(pair.experienceId) || 0) + 1);
+    return true;
+  };
+
+  experienceNodes.forEach((experienceNode) => {
+    const bestForExperience =
+      rankedPairs.find((pair) => pair.experienceId === experienceNode.id && pair.score > 0) ||
+      rankedPairs.find((pair) => pair.experienceId === experienceNode.id);
+    if (bestForExperience) trySelect(bestForExperience);
+  });
+
+  skillNodes.forEach((skillNode) => {
+    if ((degreeBySkill.get(skillNode.id) || 0) > 0) return;
+    const bestForSkill =
+      rankedPairs.find((pair) => pair.skillId === skillNode.id && pair.score > 0) ||
+      rankedPairs.find((pair) => pair.skillId === skillNode.id);
+    if (bestForSkill) trySelect(bestForSkill);
+  });
+
+  rankedPairs
+    .filter((pair) => pair.score > 0)
+    .forEach((pair) => {
+      trySelect(pair);
+    });
+
+  return selected;
+}
+
 /**
  * Centre a column of nodes vertically so skill and experience columns
  * have a balanced visual weight even when counts differ.
@@ -104,15 +212,86 @@ const KNOWN_COMPOUNDS = [
   'version control', 'object oriented',
 ];
 
-function extractSkillCandidates(jd: string): string[] {
-  const lower = jd.toLowerCase();
+const RESPONSIBILITY_HEADINGS = [
+  'key responsibilities',
+  'responsibilities',
+  'what you will do',
+  'what you’ll do',
+  'what you will be doing',
+  'what you\'ll be doing',
+  'job duties',
+  'duties',
+  'core responsibilities',
+  'role responsibilities',
+];
+
+function extractResponsibilityLines(jd: string): string[] {
+  const lines = jd
+    .split('\n')
+    .map((line) => line.replace(/\r/g, '').trim())
+    .filter(Boolean);
+
+  let inResponsibilities = false;
+  const collected: string[] = [];
+
+  for (const rawLine of lines) {
+    const normalized = rawLine.toLowerCase().replace(/[:\-–—]+$/, '').trim();
+    const isHeading = RESPONSIBILITY_HEADINGS.includes(normalized);
+    const looksLikeSectionHeading =
+      rawLine.length <= 60 &&
+      !/^[\s\-*•0-9.()]+/.test(rawLine) &&
+      /^[A-Za-z/&,\-–—' ]+$/.test(rawLine);
+
+    if (isHeading) {
+      inResponsibilities = true;
+      continue;
+    }
+
+    if (inResponsibilities && looksLikeSectionHeading && !isHeading) {
+      break;
+    }
+
+    if (inResponsibilities) {
+      const cleaned = rawLine.replace(/^[\s\-*•0-9.()]+/, '').trim();
+      if (cleaned) collected.push(cleaned);
+    }
+  }
+
+  return collected.slice(0, 12);
+}
+
+function extractContextKeywords(jobContext: string) {
+  const ranked = new Map<string, number>();
+  const phrases = jobContext
+    .split('\n')
+    .map((line) => line.replace(/^[\s\-*•0-9.()]+/, '').trim())
+    .filter((line) => line.length >= 3)
+    .flatMap((line) => line.match(/\b[A-Za-z][A-Za-z0-9+/.-]*(?:\s+[A-Za-z][A-Za-z0-9+/.-]*){0,2}\b/g) || []);
+
+  phrases.forEach((phrase, index) => {
+    const cleaned = titleCase(phrase);
+    if (tokenize(cleaned).length === 0) return;
+    ranked.set(cleaned, (ranked.get(cleaned) || 0) + Math.max(1, 20 - index));
+  });
+
+  return [...ranked.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label]) => label)
+    .slice(0, 8);
+}
+
+function extractSkillCandidates(jd: string, jobContext = ''): string[] {
+  const responsibilityLines = extractResponsibilityLines(jd);
+  const sourceText = responsibilityLines.length > 0 ? responsibilityLines.join('\n') : jd;
+  const lower = sourceText.toLowerCase();
   const found = new Map<string, number>();
+  const contextKeywords = extractContextKeywords(jobContext);
 
   // 1. Match known compound phrases first (highest priority)
   KNOWN_COMPOUNDS.forEach((compound) => {
     const escapedPattern = compound.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[\\s/-]+');
     const re = new RegExp(`\\b${escapedPattern}\\b`, 'gi');
-    const matches = jd.match(re);
+    const matches = sourceText.match(re);
     if (matches && matches.length > 0) {
       const label = titleCase(compound);
       found.set(label, (found.get(label) || 0) + matches.length * 25);
@@ -123,7 +302,7 @@ function extractSkillCandidates(jd: string): string[] {
   const phraseRe = /\b([A-Za-z][A-Za-z0-9+#/.']*(?:\s+[A-Za-z][A-Za-z0-9+#/.']*){0,2})\b/g;
   let match: RegExpExecArray | null;
   let phraseIndex = 0;
-  while ((match = phraseRe.exec(jd)) !== null) {
+  while ((match = phraseRe.exec(sourceText)) !== null) {
     phraseIndex++;
     const raw = match[1].trim();
     if (raw.length < 2) continue;
@@ -135,7 +314,17 @@ function extractSkillCandidates(jd: string): string[] {
     const brevityBonus = tokens.length <= 2 ? 5 : 0;
     // Bonus for phrases that appear early in the JD
     const positionBonus = Math.max(0, 20 - Math.floor(phraseIndex / 5));
-    const score = brevityBonus + positionBonus + 1;
+    const responsibilityBoost = responsibilityLines.some((line) => line.toLowerCase().includes(cleaned.toLowerCase()))
+      ? 25
+      : 0;
+    const cleanedTokens = tokenize(cleaned);
+    const contextBoost = contextKeywords.some((keyword) => {
+      const keywordTokens = tokenize(keyword);
+      return keywordTokens.some((token) => cleanedTokens.includes(token));
+    })
+      ? 10
+      : 0;
+    const score = brevityBonus + positionBonus + 1 + responsibilityBoost + contextBoost;
 
     found.set(cleaned, (found.get(cleaned) || 0) + score);
   }
@@ -179,7 +368,7 @@ function extractSkillCandidates(jd: string): string[] {
     .filter(([, score]) => score >= MIN_SCORE)
     .sort((a, b) => b[1] - a[1])
     .map(([label]) => label)
-    .slice(0, 8);
+    .slice(0, 6);
 }
 
 /* ── Public builders ───────────────────────────────────────────────── */
@@ -222,6 +411,8 @@ export function buildMindMap(
   ];
 
   const nodeIds = new Set(positionedNodes.map((n) => n.id));
+  const sourceDegree = new Map<string, number>();
+  const targetDegree = new Map<string, number>();
   const edges = rawEdges
     .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
     .map((e, i) => ({
@@ -229,7 +420,15 @@ export function buildMindMap(
       source: e.source,
       target: e.target,
       label: e.label || '',
-    }));
+    }))
+    .filter((edge) => {
+      const nextSourceDegree = (sourceDegree.get(edge.source) || 0) + 1;
+      const nextTargetDegree = (targetDegree.get(edge.target) || 0) + 1;
+      if (nextSourceDegree > 2 || nextTargetDegree > 2) return false;
+      sourceDegree.set(edge.source, nextSourceDegree);
+      targetDegree.set(edge.target, nextTargetDegree);
+      return true;
+    });
 
   return { nodes: positionedNodes, edges, edited };
 }
@@ -241,13 +440,14 @@ export function buildMindMap(
 export function buildFallbackMindMap(
   jd: string,
   experiences: { title: string; description: string }[],
+  jobContext = '',
   edited = false
 ): MindMapData {
   const normalizedExperiences = experiences.filter(
     (exp) => exp.title.trim().length > 0 || exp.description.trim().length > 0,
   );
 
-  const skillLabels = extractSkillCandidates(jd);
+  const skillLabels = extractSkillCandidates(jd, jobContext);
 
   // If no skills found from JD, create generic placeholder skills
   const finalSkillLabels =
@@ -269,7 +469,7 @@ export function buildFallbackMindMap(
       id: `skill-${slugify(label) || `s${i + 1}`}`,
       type: 'skill' as const,
       label,
-      note: skillLabels.length > 0 ? 'Key JD topic' : 'Placeholder — regenerate for JD-specific skills',
+      note: skillLabels.length > 0 ? 'Directly aligned to a JD responsibility' : 'Placeholder — regenerate for JD-specific skills',
       position: skillPositions[i] || getFallbackPosition('skill', i),
     })),
     ...normalizedExperiences.map((exp, i) => ({
@@ -283,46 +483,11 @@ export function buildFallbackMindMap(
 
   const experienceNodes = nodes.filter((n) => n.type === 'experience');
 
-  const edges: MindMapEdge[] = nodes
-    .filter((n) => n.type === 'skill')
-    .flatMap((skillNode) => {
-      const skillTokens = new Set(tokenize(skillNode.label));
-
-      const ranked = normalizedExperiences
-        .map((exp, idx) => {
-          const haystack = `${exp.title} ${exp.description}`;
-          const haystackTokens = tokenize(haystack);
-          // Exact token overlap
-          let overlap = haystackTokens.filter((t) => skillTokens.has(t)).length;
-          // Partial substring matching for compound skills
-          if (overlap === 0) {
-            const skillLower = skillNode.label.toLowerCase();
-            if (haystack.toLowerCase().includes(skillLower)) {
-              overlap = 3;
-            } else {
-              for (const token of skillTokens) {
-                if (haystack.toLowerCase().includes(token)) {
-                  overlap += 1;
-                }
-              }
-            }
-          }
-          return { idx, score: overlap };
-        })
-        .sort((a, b) => b.score - a.score);
-
-      const selected = ranked.some((e) => e.score > 0)
-        ? ranked.filter((e) => e.score > 0).slice(0, 3)
-        : ranked.slice(0, Math.min(2, ranked.length));
-
-      return selected.map((m, edgeIdx) => ({
-        id: `edge-${skillNode.id}-${experienceNodes[m.idx]?.id || 'unknown'}-${edgeIdx + 1}`,
-        source: skillNode.id,
-        target: experienceNodes[m.idx]?.id || experienceNodes[0]?.id || '',
-        label: m.score > 0 ? '' : '',
-      }));
-    })
-    .filter((e) => e.target);
+  const edges = buildBoundedEdges(
+    nodes.filter((node): node is MindMapNode => node.type === 'skill'),
+    experienceNodes,
+    normalizedExperiences
+  );
 
   return { nodes, edges, edited };
 }
